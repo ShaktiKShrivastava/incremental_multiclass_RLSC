@@ -1,46 +1,3 @@
-% Code for the experiments of the paper on the MNIST handwritten digits dataset:
-%   "Incremental Robot Learning of New Objects with Fixed Update Time"
-%   Raffaello Camoriano, Giulia Pasquale, Carlo Ciliberto, Lorenzo Natale, Lorenzo Rosasco, Giorgio Metta
-%   ICRA 2017
-% 
-% Abstract
-%   We consider object recognition in the context of lifelong learning, where a robotic agent learns to discriminate between a growing number of object classes as it accumulates experience about the environment. We propose an incremental variant of the Regularized Least Squares for Classification (RLSC) algorithm, and exploit its structure to seamlessly add new classes to the learned model. The presented algorithm addresses the problem of having an unbalanced proportion of training examples per class, which occurs when new objects are presented to the system for the first time. 
-%   We evaluate our algorithm on both a machine learning benchmark dataset and two challenging object recognition tasks in a robotic setting. Empirical evidence shows that our approach achieves comparable or higher classification performance than its batch counterpart when classes are unbalanced, while being significantly faster.
-%
-% Copyright (c) 2017
-% Istituto Italiano di Tecnologia, Genoa, Italy
-% R. Camoriano, G. Pasquale, C. Ciliberto, L. Natale, L. Rosasco, G. Metta
-% All rights reserved.
-%
-% Redistribution and use in source and binary forms, with or without
-% modification, are permitted provided that the following conditions
-% are met:
-%
-%     * Redistributions of source code must retain the above
-%       copyright notice, this list of conditions and the following
-%       disclaimer.
-%     * Redistributions in binary form must reproduce the above
-%       copyright notice, this list of conditions and the following
-%       disclaimer in the documentation and/or other materials
-%       provided with the distribution.
-%     * Neither the name(s) of the copyright holders nor the names
-%       of its contributors or of the Massacusetts Institute of Technology
-%		may be used to endorse or promote products
-%       derived from this software without specific prior written
-%       permission.
-%
-% THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-% "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-% LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
-% FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
-% COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
-% INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
-% BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-% LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
-% CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
-% LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
-% ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-% POSSIBILITY OF SUCH DAMAGE.
 
 clc;
 close all;
@@ -72,9 +29,12 @@ minLambdaExp = -3;  % Exponent of the minimum guess
 maxLambdaExp = 0;   % Exponent of the maximum guess
 lrng = logspace(maxLambdaExp , minLambdaExp , numLambdas);  % Lambda guesses array
 
+%lambda varies between 0 to 1 as per the paper also
+%lrng is 20 equispaced values between 0.001 = pow(10,-3) and 1 = pow(10,0)
+
 
 %% Instantiate results storage structure
-
+%numrep is the number of repetitions of the experiment
 results = repmat(struct(...
             'testCM' , zeros(numrep,numel(classes),numSnaps, numel(classes), numel(classes)),...
             'bestValAccBuf' , zeros(numrep,numel(classes),numSnaps),...
@@ -94,7 +54,9 @@ for k = 1:numrep
     display(' ');
     display(['alpha recoding parameter values: ', num2str(alphaArr)]);
     display(' ');
-	progressBar(k,numrep);
+    
+    %fancy line for no reason
+    progressBar(k,numrep);
     display(' ');
     display(' ');
 
@@ -105,22 +67,34 @@ for k = 1:numrep
     % Mix up sampled points
     ds.mixUpTrainIdx;
     ds.mixUpTestIdx;
-
+  
     Xtr = ds.X(ds.trainIdx,:);
     Xte = ds.X(ds.testIdx,:);
     Ytr = ds.Y(ds.trainIdx,:);
     Yte = ds.Y(ds.testIdx,:);
-
+    %display(ds.trainIdx)
+    
+    %display(Xtr);
+    %display(Xte);
+    %display(Ytr);
+    %display(Yte);
+    
+    
     ntr = size(Xtr,1);
     nte = size(Xte,1);
     d = size(Xtr,2);
     t  = size(Ytr,2);
     p = ds.trainClassNum / ntr; % Class frequencies array
-
+    
+    
     switch datasetName
         case 'MNIST'
             
+            %TODO
+            %find out why splitting is needed here
+            %its needed to do the training and the validation
             % Splitting MNIST
+            
             ntr1 = round(ntr*trainPart);
             nval1 = round(ntr*(1-trainPart));
             tr1idx = 1:ntr1;
@@ -133,6 +107,7 @@ for k = 1:numrep
             error('Dataset not recognized.')
     end
     
+       
     % Cycle over the imbalanced class array
     % At each cycle, a different class (specified in 'imbClassArr') is unbalanced, while all the
     % others are kept balanced.
@@ -143,32 +118,52 @@ for k = 1:numrep
         % Split training set in balanced (for pretraining) and imbalanced
         % (for incremental learning) subsets
         
+        %this line is a stunt, see the notebook for the explanation
+        
+        
+        
+        %debugging line
+        %Ytr1 = Ytr1(1000:2000,:);
+        
+        
         [tmp1,tmp2] = find(Ytr1 == 1);
+        
+        
+        
+        %we will have to tweak the values of all these parameters,
+        %specially idx_bal and idx_imbal
+        %okay, so now these few lines are only computing which and all
+        %points are having balanced sample, and which not
         idx_bal = tmp1(tmp2 ~= imbClass);   % Compute indexes of balanced samples
         Xtr_bal = Xtr1(idx_bal , :);
         Ytr_bal = Ytr1(idx_bal , :);
-        ntr_bal = size(Xtr_bal,1);
+        ntr_bal = size(Xtr_bal,1);  %which is same as size(idx_bal,1)
         
         idx_imbal = setdiff(1:ntr1 , idx_bal);   % Compute indexes of imbalanced samples
         Xtr_imbal = Xtr1(idx_imbal , :);
         Ytr_imbal = Ytr1(idx_imbal , :);
         ntr_imbal = min([maxiter, numel(idx_imbal)]);
+        %finding points over
+        
         
         % Pre-train batch model only on points belonging balanced classes
-        XtX = Xtr_bal'*Xtr_bal;
-        XtY = Xtr_bal'*Ytr_bal;
+        XtX = Xtr_bal'*Xtr_bal;     %XtX is (Xtr_bal)transpose * (Xtr_bal)
+        XtY = Xtr_bal'*Ytr_bal;     %XtY is (Xtr_bal)transpose * (Ytr_bal)
 
         lstar = 0;      % Best lambda
         bestAcc = 0;    % Highest accuracy
         w = cell(1,numel(lrng));
         R = cell(1,numel(lrng));
         
+        %what is this cholesky matrix doing? Some upper traingular matrix
+        %these guys are trying to find out
         for lidx = 1:numel(lrng)
-
             l = lrng(lidx);
             R{lidx} = chol(XtX + ntr_bal * l * eye(d), 'upper');  
         end
         
+        
+                
         %% Incremental RLSC, with recoding
         % Incremental (or Recursive) Regularized Least Squares for Classification, 
         % with Tikhonov regularization parameter selection
@@ -188,12 +183,22 @@ for k = 1:numrep
 
             sIdx = 1;
             % cycle over the imbalanced class samples
+            
+            %so from here I am assuming that we can refer Xtr_tmp and
+            %Ytr_tmp to the training data from our fingerprints, i.e. I am
+            %trying to remove the need of all the previous variables that
+            %were accessing the database of images, and assume that this is
+            %the first occurence where the substitution can be made
             for q = 1:ntr_imbal
 
+                
                 ntr_tmp = ntr_tmp + 1;
+                
+                %replace Xtr_imbal and Ytr_imbal in the code
                 Xtr_tmp(ntr_tmp,:) = Xtr_imbal(q,:);
                 Ytr_tmp(ntr_tmp,:) = Ytr_imbal(q,:);
-
+                
+                
                 tic
 
                 % Compute p
@@ -201,6 +206,10 @@ for k = 1:numrep
                 [~,tmp] = find(Ytr_tmp == 1);
                 a = unique(tmp);
                 out = [a,histc(tmp(:),a)];
+                
+                %number of data points of each class divided by the number
+                %of elements of each class (not the predicted labels,
+                %rather the already labelled ones
                 p = out(:,2)'/ntr_tmp;
 
                 % Compute t x t recoding matrix C
@@ -212,14 +221,15 @@ for k = 1:numrep
 
                 % Compute b
                 XtY_tmp = Xtr_tmp(1:ntr_tmp,:)' * Ytr_tmp(1:ntr_tmp,:);
-
+                %what is the role of XtY_tmp???
+                
                 % Buffer variables
                 lstar = zeros(1,numAlpha);         % Best lambda
                 wstar = zeros(d,t,numAlpha);       % Best w
                 currAcc = zeros(1,numAlpha);       % Current accuracy
                 bestAcc = zeros(1,numAlpha);       % Highest accuracy
-                CM = zeros(t,t,numAlpha);
-                bestCM = zeros(t,t,numAlpha);
+                CM = zeros(t,t,numAlpha);          % coding matrix temporary
+                bestCM = zeros(t,t,numAlpha);      %Best coding matrix seen till now
                 
                 for lidx = 1:numel(lrng)
 
@@ -233,6 +243,10 @@ for k = 1:numrep
                     % Update Cholesky factor R
                     R_tmp{lidx} = cholupdatek(R_tmp{lidx}, Xtr_imbal(q,:)' , '+');                
 
+                    
+                    %sIdx seems to be a variable used only for extra
+                    %caution, because sIdx is serving the same purpose as q
+                    %it seems
                     if (sIdx <= numel(snaps)) && (q == snaps(sIdx))
 
                         w0 = R_tmp{lidx} \ (R_tmp{lidx}' \ XtY_tmp);                    
@@ -246,11 +260,25 @@ for k = 1:numrep
 
                             % Predict validation labels
                             Yval1pred_raw = Xval1 * w;
-
+                            %So from here they'll try finding out the best
+                            %value of w for which the Yval1pred_raw is as
+                            %close as possible to the real values, so bro,
+                            %this is training. w depended on lambda and
+                            %alpha, and here these iterations will be done
+                            %for 2 values of alpha and 20 values of lambda,
+                            %so yes, this will find out the best value of w
+                            %for sure.
+                            
                             % Compute current validation accuracy
                             if t > 2
                                 Yval1pred = scoresToClasses( Yval1pred_raw , coding );
+                                %checking if the validation to classes is
+                                %accessing anything to of Xval or not
                                 [currAcc(kk) , CM(:,:,kk)] = weightedAccuracy2( Yval1, Yval1pred , classes);
+                                %so at the last line they've found out some
+                                %by some magic, the current accuracy
+                                
+                                
                             else
                                 CM(:,:,kk) = confusionmat(Yval1,sign(Yval1pred_raw));
                                 CM(:,:,kk) = CM(:,:,kk) ./ repmat(sum(CM(:,:,kk),2),1,2);
